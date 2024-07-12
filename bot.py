@@ -26,7 +26,7 @@ def handle_rating(message):
 def callback_query(call):
     prize_id = call.data
     user_id = call.message.chat.id
-    if manager.get_winners_count(prize_id) < 3:
+    if manager.get_winners_count(prize_id) < 6:
         res = manager.add_winner(user_id, prize_id)
         if res:
             img = manager.get_prize_img(prize_id)
@@ -46,16 +46,28 @@ def send_message():
         for user in manager.get_users():
             with open(f'hidden_img/{img}', 'rb') as photo:
                 bot.send_photo(user, photo, reply_markup=gen_markup(id=prize_id))
-    else:
-        print("No more available prizes.")
 
 def shedule_thread():
-    schedule.every(10).seconds.do(send_message)  # Отправка картинок каждый час
+    user_rating = manager.get_rating()
+    if user_rating == 1:
+        schedule.every(60).seconds.do(send_message)
+    elif user_rating == 2:
+        schedule.every(30).seconds.do(send_message)
+    elif user_rating == 3:
+        schedule.every(10).seconds.do(send_message)
+    elif user_rating == 4:
+        schedule.every(10).seconds.do(send_message)
+    elif user_rating == 5:
+        schedule.every(10).seconds.do(send_message)
+    elif user_rating == 6:
+        schedule.every(10).seconds.do(send_message)
+    else:
+        schedule.every(60).minutes.do(send_message)
     while True:
         schedule.run_pending()
         time.sleep(0.5)
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'help'])
 def handle_start(message):
     user_id = message.chat.id
     if user_id in manager.get_users():
@@ -78,6 +90,7 @@ def handle_star(message):
     cv2.imwrite('collage.jpg', collage)
     with open('collage.jpg', 'rb') as photo:
         bot.send_photo(message.chat.id, photo, caption="Вот твой коллаж!")
+
 
 def polling_thread():
     bot.polling(none_stop=True)
