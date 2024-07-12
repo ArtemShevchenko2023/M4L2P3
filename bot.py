@@ -21,15 +21,11 @@ def handle_rating(message):
     res = '\n'.join(res)
     res = f'|USER_NAME    |COUNT_PRIZE|\n{"_"*26}\n' + res
     bot.send_message(message.chat.id, res)
-    
-    
-    
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
-
     prize_id = call.data
     user_id = call.message.chat.id
-
     if manager.get_winners_count(prize_id) < 3:
         res = manager.add_winner(user_id, prize_id)
         if res:
@@ -41,21 +37,23 @@ def callback_query(call):
     else:
         bot.send_message(user_id, "К сожалению, ты не успел получить картинку! Попробуй в следующий раз!)")
 
-
 def send_message():
-    prize_id, img = manager.get_random_prize()[:2]
-    manager.mark_prize_used(prize_id)
-    hide_img(img)
-    for user in manager.get_users():
-        with open(f'hidden_img/{img}', 'rb') as photo:
-            bot.send_photo(user, photo, reply_markup=gen_markup(id = prize_id))
-        
+    result = manager.get_random_prize()
+    if result:
+        prize_id, img = result[:2]
+        manager.mark_prize_used(prize_id)
+        hide_img(img)
+        for user in manager.get_users():
+            with open(f'hidden_img/{img}', 'rb') as photo:
+                bot.send_photo(user, photo, reply_markup=gen_markup(id=prize_id))
+    else:
+        print("No more available prizes.")
 
 def shedule_thread():
-    schedule.every().minute.do(send_message) # Здесь ты можешь задать периодичность отправки картинок
+    schedule.every(10).seconds.do(send_message)  # Отправка картинок каждый час
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        time.sleep(0.5)
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -68,10 +66,18 @@ def handle_start(message):
 Тебя успешно зарегистрировали!
 Каждый час тебе будут приходить новые картинки и у тебя будет шанс их получить!
 Для этого нужно быстрее всех нажать на кнопку 'Получить!'
-
 Только три первых пользователя получат картинку!)""")
-        
 
+@bot.message_handler(commands=['collage'])
+def handle_star(message):
+    user_id = message.chat.id
+    info = manager.get_winners_img(user_id)
+    prizes = [x[0] for x in info]
+    image_paths = [f'img/{x}' if x in prizes else f'hidden_img/{x}' for x in os.listdir('img')]
+    collage = manager.create_collage(image_paths)
+    cv2.imwrite('collage.jpg', collage)
+    with open('collage.jpg', 'rb') as photo:
+        bot.send_photo(message.chat.id, photo, caption="Вот твой коллаж!")
 
 def polling_thread():
     bot.polling(none_stop=True)
@@ -79,9 +85,7 @@ def polling_thread():
 if __name__ == '__main__':
     manager = DatabaseManager(DATABASE)
     manager.create_tables()
-
     polling_thread = threading.Thread(target=polling_thread)
-    polling_shedule  = threading.Thread(target=shedule_thread)
-
+    polling_shedule = threading.Thread(target=shedule_thread)
     polling_thread.start()
     polling_shedule.start()

@@ -3,6 +3,8 @@ from datetime import datetime
 from config import DATABASE 
 import os
 import cv2
+from math import sqrt, ceil, floor
+import numpy as np
 
 class DatabaseManager:
     def __init__(self, database):
@@ -17,7 +19,6 @@ class DatabaseManager:
                 user_name TEXT
             )
         ''')
-
             conn.execute('''
             CREATE TABLE IF NOT EXISTS prizes (
                 prize_id INTEGER PRIMARY KEY,
@@ -25,7 +26,6 @@ class DatabaseManager:
                 used INTEGER DEFAULT 0
             )
         ''')
-
             conn.execute('''
             CREATE TABLE IF NOT EXISTS winners (
                 user_id INTEGER,
@@ -35,7 +35,6 @@ class DatabaseManager:
                 FOREIGN KEY(prize_id) REFERENCES prizes(prize_id)
             )
         ''')
-
             conn.commit()
 
     def add_user(self, user_id, user_name):
@@ -63,7 +62,6 @@ class DatabaseManager:
                 conn.commit()
                 return 1
 
-  
     def mark_prize_used(self, prize_id):
         conn = sqlite3.connect(self.database)
         with conn:
@@ -76,44 +74,77 @@ class DatabaseManager:
             cur = conn.cursor()
             cur.execute('SELECT * FROM users')
             return [x[0] for x in cur.fetchall()] 
-        
+
     def get_prize_img(self, prize_id):
         conn = sqlite3.connect(self.database)
         with conn:
             cur = conn.cursor()
             cur.execute('SELECT image FROM prizes WHERE prize_id = ?', (prize_id, ))
             return cur.fetchall()[0][0]
-            
+
     def get_random_prize(self):
         conn = sqlite3.connect(self.database)
         with conn:
             cur = conn.cursor()
             cur.execute('SELECT * FROM prizes WHERE used = 0 ORDER BY RANDOM()')
-            return cur.fetchall()[0]
+            result = cur.fetchall()
+            if result:
+                return result[0]
+            else:
+                return None
+
     def get_winners_count(self, prize_id):
         conn = sqlite3.connect(self.database)
         with conn:
             cur = conn.cursor()
             cur.execute('SELECT COUNT(*) FROM winners WHERE prize_id = ?', (prize_id, ))
             return cur.fetchall()[0][0]
-   
-   
-    
+
+    def get_winners_img(self, user_id):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute(''' 
+    SELECT image FROM winners 
+    INNER JOIN prizes ON 
+    winners.prize_id = prizes.prize_id
+    WHERE user_id = ?''', (user_id, ))
+            return cur.fetchall()
+
     def get_rating(self):
         conn = sqlite3.connect(self.database)
         with conn:
             cur = conn.cursor()
             cur.execute('''
-    SELECT users.user_name, prizes.prize
-    FROM users
-    JOIN prizes ON users.id = prizes.user_id
-    GROUP BY username
-    ORDER BY prize_count DESC
-    LIMIT 10
-    ''')
+                SELECT users.user_name, COUNT(winners.prize_id) AS prize_count
+                FROM users
+                LEFT JOIN winners ON users.user_id = winners.user_id
+                GROUP BY users.user_id
+                ORDER BY prize_count DESC
+                LIMIT 10
+            ''')
             return cur.fetchall()
-    
-  
+
+    def create_collage(self, image_paths):
+        images = []
+        for path in image_paths:
+            if os.path.exists(path):
+                image = cv2.imread(path)
+                images.append(image)
+            else:
+                images.append(np.zeros_like(cv2.imread('img/example.jpg')))  # Добавляем пустое изображение, если файл не найден
+        num_images = len(images)
+        num_cols = floor(sqrt(num_images))  # Поиск количество картинок по горизонтали
+        num_rows = ceil(num_images / num_cols)  # Поиск количество картинок по вертикали
+        # Создание пустого коллажа
+        collage = np.zeros((num_rows * images[0].shape[0], num_cols * images[0].shape[1], 3), dtype=np.uint8)
+        # Размещение изображений на коллаже
+        for i, image in enumerate(images):
+            row = i // num_cols
+            col = i % num_cols
+            collage[row * image.shape[0]:(row + 1) * image.shape[0], col * image.shape[1]:(col + 1) * image.shape[1], :] = image
+        return collage
+
 def hide_img(img_name):
     image = cv2.imread(f'img/{img_name}')
     blurred_image = cv2.GaussianBlur(image, (15, 15), 0)
